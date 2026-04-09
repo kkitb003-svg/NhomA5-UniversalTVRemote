@@ -268,4 +268,277 @@ class SamsungRemoteRepository(context: Context) : TvRemoteRepository {
         }.getOrDefault(false)
     }
 
+    override suspend fun getDeviceInfo(ip: String, port: Int): TvDevice? = withContext(Dispatchers.IO) {
+        runCatching {
+            client.newCall(
+                Request.Builder().url("http://$ip:8001/api/v2/").build()
+            ).execute().use { response ->
+                val body = response.body?.string() ?: return@use null
+                val json = gson.fromJson(body, JsonObject::class.java)
+                val deviceInfo = json.getAsJsonObject("device") ?: return@use null
+                val name = deviceInfo.get("name")?.asString ?: "Samsung TV ($ip)"
+                val mac = deviceInfo.get("wifiMac")?.asString.orEmpty()
+                val modelYear = deviceInfo.get("modelYear")?.asString.orEmpty()
+                val wsPort = if ((modelYear.toIntOrNull() ?: 0) >= 2016) 8002 else 8001
 
+                TvDevice(
+                    name = name,
+                    ip = ip,
+                    port = wsPort,
+                    macAddress = mac,
+                    modelYear = modelYear,
+                    brand = TvBrand.SAMSUNG
+                )
+            }
+        }.getOrNull()
+    }
+
+    private fun startSocketConnection(device: TvDevice, emitConnecting: Boolean) {
+        val connectionId = ++activeConnectionId
+        closeCurrentSocket()
+        connectionWasEstablished = false
+        if (emitConnecting) {
+            _connectionState.value = ConnectionState.Connecting
+        }
+
+        val useSecure = device.port == 8002
+        val tokenQuery = prefs.getString(tokenPrefKey(device.ip), null)
+            ?.takeIf { it.isNotBlank() }
+            ?.let { "&token=$it" }
+            .orEmpty()
+        val protocol = if (useSecure) "wss" else "ws"
+        val wsUrl =
+            "$protocol://${device.ip}:${device.port}/api/v2/channels/samsung.remote.control?name=$appName$tokenQuery"
+
+        Log.d(TAG, "Connecting to $wsUrl")
+
+        val request = Request.Builder().url(wsUrl).build()
+        webSocket = client.newWebSocket(request, object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                if (connectionId != activeConnectionId) {
+                    webSocket.cancel()
+                    return
+                }
+                reconnectJob?.cancel()
+                reconnectAttempts = 0
+                connectionWasEstablished = true
+                _connectionState.value = ConnectionState.Connected(device)
+            }
+
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                if (connectionId != activeConnectionId) return
+                parseAndPersistToken(device.ip, text)
+                parseInstalledAppsResponse(text)
+            }
+
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                if (connectionId != activeConnectionId) return
+
+                val message = t.message ?: response?.message ?: "Connection failed"
+                Log.e(TAG, "Samsung socket failure: $message")
+
+                if (!useSecure && shouldRetryOnSecurePort(message)) {
+                    connect(device.copy(port = 8002))
+                    return
+                }
+
+                if (connectionWasEstablished && isRecoverableSocketProblem(message)) {
+                    scheduleReconnect(device, "TV closed the remote session.")
+                    return
+                }
+
+                _connectionState.value = ConnectionState.Error(userFacingMessage(message))
+            }
+
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                if (connectionId != activeConnectionId) return
+                runCatching { webSocket.close(1000, "Client closing") }
+            }
+
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                if (connectionId != activeConnectionId) return
+
+                if (manualDisconnect) {
+                    _connectionState.value = ConnectionState.Disconnected
+                    return
+                }
+
+                if (!useSecure && code == 1005) {
+                    connect(device.copy(port = 8002))
+                    return
+                }
+
+                if (connectionWasEstablished && isRecoverableCloseCode(code)) {
+                    scheduleReconnect(device, "TV closed the remote session.")
+                } else {
+                    _connectionState.value = ConnectionState.Disconnected
+                }
+            }
+        })
+    }
+
+    private fun scheduleReconnect(device: TvDevice, fallbackMessage: String) {
+        if (manualDisconnect) return
+
+        if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+            _connectionState.value = ConnectionState.Error(fallbackMessage)
+            return
+        }
+
+        reconnectJob?.cancel()
+        reconnectAttempts += 1
+        _connectionState.value = ConnectionState.Connecting
+
+        reconnectJob = scope.launch {
+            delay(reconnectDelayMs(reconnectAttempts))
+            if (!manualDisconnect && currentDevice?.ip == device.ip) {
+                startSocketConnection(device, emitConnecting = true)
+            }
+        }
+    }
+
+    private fun closeCurrentSocket() {
+        webSocket?.cancel()
+        webSocket = null
+    }
+
+    private fun parseAndPersistToken(ip: String, text: String) {
+        runCatching {
+            val json = gson.fromJson(text, JsonObject::class.java)
+            val event = json.get("event")?.asString
+            if (event == "ms.channel.connect") {
+                val token = json.getAsJsonObject("data")
+                    ?.get("token")
+                    ?.asString
+                    ?.takeIf { it.isNotBlank() }
+                if (token != null) {
+                    prefs.edit().putString(tokenPrefKey(ip), token).apply()
+                }
+            }
+        }
+    }
+
+    private suspend fun requestInstalledAppsOverWebSocket(): List<TvApp> = withContext(Dispatchers.IO) {
+        val socket = webSocket ?: return@withContext emptyList()
+        kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
+            pendingInstalledAppsCallback = { apps ->
+                if (continuation.isActive) {
+                    continuation.resume(apps, onCancellation = null)
+                }
+            }
+
+            val payload = JsonObject().apply {
+                addProperty("method", "ms.channel.emit")
+                add(
+                    "params",
+                    JsonObject().apply {
+                        addProperty("event", "ed.installedApp.get")
+                        addProperty("to", "host")
+                    }
+                )
+            }.toString()
+
+            val sent = socket.send(payload)
+            if (!sent) {
+                pendingInstalledAppsCallback = null
+                continuation.resume(emptyList(), onCancellation = null)
+                return@suspendCancellableCoroutine
+            }
+
+            scope.launch {
+                delay(4000L)
+                if (continuation.isActive) {
+                    pendingInstalledAppsCallback = null
+                    continuation.resume(emptyList(), onCancellation = null)
+                }
+            }
+        }
+    }
+
+    private fun parseInstalledAppsResponse(text: String) {
+        runCatching {
+            val json = gson.fromJson(text, JsonObject::class.java)
+            if (json.get("event")?.asString != "ed.installedApp.get") {
+                return
+            }
+
+            val appsArray = json.getAsJsonObject("data")
+                ?.getAsJsonArray("data")
+                ?: JsonArray()
+
+            val apps = appsArray.mapNotNull { element ->
+                val obj = runCatching { element.asJsonObject }.getOrNull() ?: return@mapNotNull null
+                val appId = obj.get("appId")?.asString ?: return@mapNotNull null
+                val name = obj.get("name")?.asString ?: appId
+                TvApp(
+                    appId = appId,
+                    name = name,
+                    version = obj.get("version")?.asString.orEmpty(),
+                    visible = obj.get("visible")?.asBoolean ?: true
+                )
+            }.sortedBy { it.name.lowercase() }
+
+            pendingInstalledAppsCallback?.also { callback ->
+                pendingInstalledAppsCallback = null
+                callback(apps)
+            }
+        }.onFailure {
+            Log.d(TAG, "Failed to parse Samsung installed apps event: ${it.message}")
+        }
+    }
+
+    private fun buildKeyPayload(keyCode: String): String {
+        return """{"method":"ms.remote.control","params":{"Cmd":"Click","DataOfCmd":"$keyCode","Option":"false","TypeOfRemote":"SendRemoteKey"}}"""
+    }
+
+    private fun apiBase(device: TvDevice): String = "http://${device.ip}:8001"
+
+    private fun tokenPrefKey(ip: String): String = "token_$ip"
+
+    private fun shouldRetryOnSecurePort(message: String): Boolean {
+        val normalized = message.lowercase()
+        return "1005" in normalized ||
+            "ssl" in normalized ||
+            "handshake" in normalized ||
+            "protocol_error" in normalized ||
+            "connection reset" in normalized
+    }
+
+    private fun isRecoverableSocketProblem(message: String): Boolean {
+        val normalized = message.lowercase()
+        return "1005" in normalized ||
+            "reserved and may not be used" in normalized ||
+            "connection reset" in normalized ||
+            "broken pipe" in normalized ||
+            "socket closed" in normalized ||
+            "eof" in normalized ||
+            "timeout" in normalized ||
+            "canceled" in normalized
+    }
+
+    private fun isRecoverableCloseCode(code: Int): Boolean {
+        return code == 1001 || code == 1005 || code == 1006 || code == 1011
+    }
+
+    private fun reconnectDelayMs(attempt: Int): Long {
+        return when (attempt) {
+            1 -> 1200L
+            2 -> 2500L
+            3 -> 4000L
+            4 -> 6000L
+            else -> 8000L
+        }
+    }
+
+    private fun userFacingMessage(message: String): String {
+        val normalized = message.lowercase()
+        return when {
+            "1005" in normalized -> "TV closed the remote socket unexpectedly."
+            "handshake" in normalized || "ssl" in normalized ->
+                "Secure handshake failed. Accept the permission prompt on the TV."
+            "timeout" in normalized ->
+                "Connection timed out. Make sure the phone and TV are on the same Wi-Fi."
+            else -> message
+        }
+    }
+}
