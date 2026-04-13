@@ -155,8 +155,6 @@ cd universal-tv-remote
 
 ## 📸 Giao diện ứng dụng
 
-> Thêm ảnh chụp màn hình vào thư mục `./screenshots/` để hiển thị tại đây.
-
 | Ảnh | Mô tả |
 |---|---|
 | `screenshot-hero.png` | Ảnh hero/giao diện chính |
@@ -165,7 +163,6 @@ cd universal-tv-remote
 | `screenshot-cast.png` | Giao diện Cast & Mirror |
 | `screenshot-settings.png` | Màn hình cài đặt |
 
-*Các file ảnh có thể là PNG hoặc JPG, kích thước khuyến nghị: 1280×720px.*
 
 ---
 
