@@ -50,7 +50,15 @@ fun ScanScreen(viewModel: MainViewModel, onConnected: () -> Unit, connectionStat
 
     Box(
         modifier = Modifier
-
+            .fillMaxSize()
+            .background(NavyBackground)
+    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(top = 16.dp, bottom = 48.dp, start = 16.dp, end = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            item {
                 // Header with Logo
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp),

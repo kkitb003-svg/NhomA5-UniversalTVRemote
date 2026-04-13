@@ -1418,10 +1418,7 @@ fun NumberPad(viewModel: MainViewModel) {
                     if (num.isBlank()) {
                         Spacer(Modifier.size(50.dp))
                     } else {
-                        val isBack = num == "⌫"
-                        val accent = if (isBack) AccentRed else GoldLight
-                        var pressed by remember { mutableStateOf(false) }
-                        val scale by animateFloatAsState(
+
                             targetValue = if (pressed) 0.85f else 1f,
                             animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
                             label = "num_scale_$num"
