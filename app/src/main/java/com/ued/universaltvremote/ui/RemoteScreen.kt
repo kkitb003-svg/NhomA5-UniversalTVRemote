@@ -1450,10 +1450,7 @@ fun NumberPad(viewModel: MainViewModel) {
                                         keyCodes[num]?.let { viewModel.sendKey(it) }
                                     })
                                 },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(num, color = accent, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        }
+
                     }
                 }
             }
