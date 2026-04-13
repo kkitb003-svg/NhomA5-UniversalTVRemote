@@ -188,6 +188,6 @@ Dự án này được phát triển cho **mục đích học tập** trong khu�
 ---
 
 <p align="center">
-  <strong>Made with ❤️ by Nhóm 5 – UED</strong><br>
+  <strong>Made with ❤️ by Nhóm A5 – UED</strong><br>
   <em>Phát triển ứng dụng Android • Jetpack Compose • Material Design 3</em>
 </p>
