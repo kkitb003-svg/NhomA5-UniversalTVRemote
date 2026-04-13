@@ -18,10 +18,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+
+import com.ued.universaltvremote.ui.theme.*
+import com.ued.universaltvremote.viewmodel.MainViewMo
+
+
 import com.ued.universaltvremote.model.TvApp
 import com.ued.universaltvremote.network.ConnectionState
-import com.ued.universaltvremote.ui.theme.*
-import com.ued.universaltvremote.viewmodel.MainViewModel
+del
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -70,10 +74,6 @@ fun AppsScreen(viewModel: MainViewModel) {
                 }
             }
 
-            if (!isConnected) {
-                NotConnectedPlaceholder(subtitle = "Connect to a TV to see installed apps")
-                return@Column
-            }
 
             if (isLoadingApps) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -91,6 +91,12 @@ fun AppsScreen(viewModel: MainViewModel) {
                 }
                 return@Column
             }
+
+            if (!isConnected) {
+                NotConnectedPlaceholder(subtitle = "Connect to a TV to see installed apps")
+                return@Column
+            }
+
 
             if (installedApps.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
