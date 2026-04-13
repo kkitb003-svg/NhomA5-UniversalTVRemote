@@ -74,10 +74,6 @@ fun AppsScreen(viewModel: MainViewModel) {
                 }
             }
 
-            if (!isConnected) {
-                NotConnectedPlaceholder(subtitle = "Connect to a TV to see installed apps")
-                return@Column
-            }
 
             if (isLoadingApps) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -95,6 +91,12 @@ fun AppsScreen(viewModel: MainViewModel) {
                 }
                 return@Column
             }
+
+            if (!isConnected) {
+                NotConnectedPlaceholder(subtitle = "Connect to a TV to see installed apps")
+                return@Column
+            }
+
 
             if (installedApps.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
