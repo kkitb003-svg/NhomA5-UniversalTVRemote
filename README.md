@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <img src="./screenshots/screenshot-hero.png" alt="Hero Screenshot" width="280" style="border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.15);">
+  <img src="./screenshots/screenshot-hero.png" alt="Hero Screenshot" width="240">
 </p>
 
 ---
@@ -36,7 +36,7 @@
 ## 📺 Hỗ trợ các thương hiệu TV
 
 <p align="center">
-  <img src="./screenshots/screenshot-devices.png" alt="Supported Devices" width="600" style="border-radius: 12px;">
+  <img src="./screenshots/screenshot-devices.png" alt="Supported Devices" width="240">
 </p>
 
 Ứng dụng hỗ trợ **07 nền tảng Smart TV phổ biến**:
@@ -74,7 +74,7 @@
 ## 👥 Đội ngũ phát triển
 
 <p align="center">
-  <img src="./screenshots/screenshot-team.png" alt="Team" width="600" style="border-radius: 12px;">
+  <img src="./screenshots/screenshot-team.png" alt="Team" width="240">
 </p>
 
 Dự án được phát triển bởi **Nhóm 5 – UED** với 5 thành viên, mỗi người phụ trách một nhánh tính năng riêng biệt.
@@ -188,6 +188,6 @@ Dự án này được phát triển cho **mục đích học tập** trong khu�
 ---
 
 <p align="center">
-  <strong>Made with ❤️ by Nhóm A5 – UED</strong><br>
+  <strong>Made with ❤️ by Nhóm 5 – UED</strong><br>
   <em>Phát triển ứng dụng Android • Jetpack Compose • Material Design 3</em>
 </p>
