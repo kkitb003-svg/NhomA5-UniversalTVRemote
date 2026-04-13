@@ -28,7 +28,16 @@ internal class AdbTcpShellClient {
         private const val CONNECT_TIMEOUT_MS = 1800
         private val DEFAULT_PORTS = listOf(5555)
         private val HOST_BANNER = "host::UniversalTvRemote"
+    }
 
+    suspend fun probe(ip: String, ports: List<Int> = DEFAULT_PORTS): ProbeResult = withContext(Dispatchers.IO) {
+        ports.distinct().forEach { port ->
+            val result = runCatching {
+                Socket().use { socket ->
+                    socket.connect(InetSocketAddress(ip, port), CONNECT_TIMEOUT_MS)
+                    socket.soTimeout = CONNECT_TIMEOUT_MS
+                    val handshake = handshake(socket.inputStream, socket.outputStream)
+                    when (handshake) {
                         HandshakeResult.Connected -> ProbeResult(port = port, authRequired = false)
                         HandshakeResult.AuthRequired -> ProbeResult(port = port, authRequired = true)
                     }
@@ -61,7 +70,12 @@ internal class AdbTcpShellClient {
         }
     }
 
-
+    private fun handshake(input: InputStream, output: OutputStream): HandshakeResult {
+        writePacket(
+            output = output,
+            command = A_CNXN,
+            arg0 = VERSION,
+            arg1 = MAX_DATA,
             payload = HOST_BANNER.toByteArray()
         )
 
